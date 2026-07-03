@@ -1,0 +1,331 @@
+"""
+Badge definitions, data file keys, and tier thresholds.
+References: https://ingress.plus/badges
+
+Data key = the key used in data_loader._KNOWN_FILES (NOT the filename).
+
+Tiers: Bronze / Silver / Gold / Platinum / Onyx
+"""
+from __future__ import annotations
+
+BADGE_TIERS = ["Bronze", "Silver", "Gold", "Platinum", "Onyx"]
+TIER_COLORS = {
+    "Bronze": "#CD7F32",
+    "Silver": "#C0C0C0",
+    "Gold": "#FFD700",
+    "Platinum": "#8ED9FF",
+    "Onyx": "#FF3333",
+}
+
+# data_key: the internal key from data_loader._KNOWN_FILES
+BADGES = [
+    {
+        "key": "builder",
+        "name": "Builder",
+        "name_zh": "建设者",
+        "data_key": "deploys",
+        "agg": "count",
+        "threshold": [2000, 10000, 30000, 100000, 200000],
+        "category": "Core",
+        "note": "Deploy resonators",
+    },
+    {
+        "key": "hacker",
+        "name": "Hacker",
+        "name_zh": "黑客",
+        "data_key": "hacks",
+        "agg": "count",
+        "threshold": [6000, 30000, 60000, 120000, 200000],
+        "category": "Core",
+        "note": "Hack portals",
+    },
+    {
+        "key": "connector",
+        "name": "Connector",
+        "name_zh": "连接者",
+        "data_key": "links_created",
+        "agg": "count",
+        "threshold": [50, 500, 2000, 8000, 20000],
+        "category": "Core",
+        "note": "Create links",
+    },
+    {
+        "key": "mindcontroller",
+        "name": "Mind Controller",
+        "name_zh": "心灵操控者",
+        "data_key": "regions_created",
+        "agg": "count",
+        "threshold": [100, 500, 2000, 10000, 25000],
+        "category": "Core",
+        "note": "Create control fields",
+    },
+    {
+        "key": "recharger",
+        "name": "Recharger",
+        "name_zh": "充电者",
+        "data_key": "xm_recharged",
+        "agg": "sum",
+        "threshold": [300000, 3000000, 7500000, 15000000, 30000000],
+        "category": "Core",
+        "note": "Recharge XM",
+    },
+    {
+        "key": "liberator",
+        "name": "Liberator",
+        "name_zh": "解放者",
+        "data_key": "portal_guids_captured",
+        "agg": "nunique",
+        "threshold": [100, 1000, 5000, 15000, 40000],
+        "category": "Core",
+        "note": "Unique portals captured",
+    },
+    {
+        "key": "pioneer",
+        "name": "Pioneer",
+        "name_zh": "先锋",
+        "data_key": "portal_guids_captured",
+        "agg": "nunique",
+        "threshold": [20, 500, 2000, 10000, 20000],
+        "category": "Core",
+        "note": "Unique portals captured",
+    },
+    {
+        "key": "explorer",
+        "name": "Explorer",
+        "name_zh": "探索者",
+        "data_key": "portal_guids_visited",
+        "agg": "nunique",
+        "threshold": [100, 1000, 5000, 10000, 15000],
+        "category": "Core",
+        "note": "Unique portals visited",
+    },
+    {
+        "key": "purifier",
+        "name": "Purifier",
+        "name_zh": "净化者",
+        "data_key": "resonators_destroyed",
+        "agg": "sum",
+        "threshold": [2000, 10000, 30000, 100000, 200000],
+        "category": "Core",
+        "note": "Destroy resonators",
+    },
+    {
+        "key": "engineer",
+        "name": "Engineer",
+        "name_zh": "工程师",
+        "data_key": "mods_deployed",
+        "agg": "count",
+        "threshold": [150, 1500, 5000, 15000, 40000],
+        "category": "Core",
+        "note": "Deploy mods",
+    },
+    {
+        "key": "specops",
+        "name": "SpecOps",
+        "name_zh": "特殊行动",
+        "data_key": "missions_completed",
+        "agg": "nunique",
+        "threshold": [5, 25, 100, 300, 500],
+        "category": "Core",
+        "note": "Complete unique missions",
+    },
+    {
+        "key": "translator",
+        "name": "Translator",
+        "name_zh": "翻译者",
+        "data_key": "glyph_hack_points",
+        "agg": "sum",
+        "threshold": [200, 2000, 5000, 10000, 20000],
+        "category": "Core",
+        "note": "Glyph hack points",
+    },
+    {
+        "key": "sojourner",
+        "name": "Sojourner",
+        "name_zh": "旅居者",
+        "data_key": "hack_streaks_completed",
+        "agg": "count",
+        "threshold": [15, 30, 60, 180, 360],
+        "category": "Streaks",
+        "note": "Hack streak days completed",
+    },
+    {
+        "key": "trekker",
+        "name": "Trekker",
+        "name_zh": "徒步者",
+        "data_key": "kilometers_walked_new",
+        "agg": "sum",
+        "threshold": [10, 100, 300, 1000, 2500],
+        "category": "Core",
+        "note": "Km walked (sum of increments)",
+    },
+    {
+        "key": "recon",
+        "name": "Recon",
+        "name_zh": "侦察",
+        "data_key": "all_portals_approved",
+        "agg": "nunique",
+        "threshold": [100, 250, 500, 1000, 2500],
+        "category": "Wayfarer",
+        "note": "Portals approved via Wayfarer",
+    },
+    {
+        "key": "seer",
+        "name": "Seer",
+        "name_zh": "先知",
+        "data_key": "seer_portals",
+        "agg": "nunique",
+        "threshold": [5, 10, 50, 500, 2500],
+        "category": "Retired",
+        "note": "Portals discovered (retired)",
+    },
+    {
+        "key": "illuminator",
+        "name": "Illuminator",
+        "name_zh": "启蒙者",
+        "data_key": "mind_units_controlled",
+        "agg": "sum",
+        "threshold": [5000, 50000, 250000, 500000, 1000000],
+        "category": "Core",
+        "note": "MU captured via fields",
+    },
+    {
+        "key": "neutralizer",
+        "name": "Neutralizer",
+        "name_zh": "中立者",
+        "data_key": "portals_neutralized",
+        "agg": "count",
+        "threshold": [100, 500, 2000, 7500, 15000],
+        "category": "Core",
+        "note": "Portals neutralized",
+    },
+    {
+        "key": "link_destroyer",
+        "name": "Link Destroyer",
+        "name_zh": "连线破坏者",
+        "data_key": "links_destroyed",
+        "agg": "sum",
+        "threshold": [50, 500, 2500, 10000, 25000],
+        "category": "Core",
+        "note": "Links destroyed",
+    },
+    {
+        "key": "field_destroyer",
+        "name": "Field Destroyer",
+        "name_zh": "领域破坏者",
+        "data_key": "regions_destroyed",
+        "agg": "sum",
+        "threshold": [50, 500, 2500, 10000, 25000],
+        "category": "Core",
+        "note": "Fields destroyed",
+    },
+    {
+        "key": "guardian",
+        "name": "Guardian",
+        "name_zh": "守护者",
+        "data_key": "portal_held_days",
+        "agg": "max",
+        "threshold": [3, 10, 20, 90, 150],
+        "category": "Retired",
+        "note": "Max days a portal held (retired)",
+    },
+    {
+        "key": "scout",
+        "name": "Scout",
+        "name_zh": "侦察兵",
+        "data_key": "scout_controller_portal_guids",
+        "agg": "nunique",
+        "threshold": [200, 1000, 5000, 15000, 30000],
+        "category": "Core",
+        "note": "Scout points on portals",
+    },
+    {
+        "key": "scout_controller",
+        "name": "Scout Controller",
+        "name_zh": "控场侦察",
+        "data_key": "scout_controller_portal_guids",
+        "agg": "nunique",
+        "threshold": [100, 500, 2000, 5000, 10000],
+        "category": "Core",
+        "note": "Scout Controller on unique portals",
+    },
+    {
+        "key": "second_sunday",
+        "name": "Second Sunday",
+        "name_zh": "第二周日",
+        "data_key": "second_sunday_events",
+        "agg": "nunique",
+        "threshold": [1, 4, 12, 24, 36],
+        "category": "Events",
+        "note": "Second Sunday events",
+    },
+    {
+        "key": "machina_reclaimer",
+        "name": "Reclaimer",
+        "name_zh": "回收者",
+        "data_key": "machina_portals_reclaimed_guids",
+        "agg": "nunique",
+        "threshold": [50, 200, 500, 2000, 5000],
+        "category": "Machina",
+        "note": "Machina portals reclaimed",
+    },
+    {
+        "key": "ocf",
+        "name": "Operation Clear Field",
+        "name_zh": "清场行动",
+        "data_key": "machina_portals_neutralized",
+        "agg": "count",
+        "threshold": [250, 1000, 2500, 7500, 25000],
+        "category": "Events",
+        "note": "Machina portals neutralized",
+    },
+    {
+        "key": "overclock",
+        "name": "Maverick",
+        "name_zh": "特立独行",
+        "data_key": "overclock_glyph_hack_points",
+        "agg": "count",
+        "threshold": [1, 5, 10, 50, 100],
+        "category": "Core",
+        "note": "Overclock glyph hacks",
+    },
+    {
+        "key": "kinetic",
+        "name": "Kinetic",
+        "name_zh": "动能",
+        "data_key": "kinetic_capsules_completed",
+        "agg": "count",
+        "threshold": [50, 200, 500, 2000, 5000],
+        "category": "Core",
+        "note": "Kinetic capsules completed",
+    },
+    {
+        "key": "recruiter",
+        "name": "Recruiter",
+        "name_zh": "招募者",
+        "data_key": "agents_recruited",
+        "agg": "nunique",
+        "threshold": [1, 2, 5, 10, 50],
+        "category": "Retired",
+        "note": "Agents recruited (retired)",
+    },
+]
+
+
+def get_tier(value: float, thresholds: list[int]) -> tuple[str, int | None]:
+    """Return (current_tier_name, next_threshold_or_None)."""
+    tier_idx = 0
+    for i, t in enumerate(thresholds):
+        if value >= t:
+            tier_idx = i + 1
+        else:
+            break
+    if tier_idx >= len(thresholds):
+        return "Onyx", None
+    return BADGE_TIERS[tier_idx - 1] if tier_idx > 0 else "None", thresholds[tier_idx]
+
+
+def get_tier_color(tier_name: str) -> str:
+    if tier_name in TIER_COLORS:
+        return TIER_COLORS[tier_name]
+    return "#888888"
