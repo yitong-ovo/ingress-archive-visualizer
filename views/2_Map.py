@@ -27,6 +27,31 @@ LAYER_TITLES = {
     "activity-dots": "Activity point",
     "portal-history": "Portal",
 }
+MAX_DETAIL_CHARS = 180
+MAX_CACHE_ENTRIES = 24
+
+
+def _cache_key(prefix: str, *parts) -> tuple:
+    return (st.session_state.get("source_id", ""), prefix, *parts)
+
+
+def _map_cache() -> dict:
+    cache = st.session_state.get("_map_cache")
+    if not isinstance(cache, dict):
+        cache = {}
+        st.session_state["_map_cache"] = cache
+    return cache
+
+
+def _cache_get_or_set(key: tuple, factory):
+    cache = _map_cache()
+    if key in cache:
+        return cache[key]
+    value = factory()
+    cache[key] = value
+    while len(cache) > MAX_CACHE_ENTRIES:
+        cache.pop(next(iter(cache)))
+    return value
 
 
 def _as_utc(value) -> pd.Timestamp:
@@ -69,12 +94,17 @@ def _collect_location_data(source_data: dict[str, pd.DataFrame]) -> pd.DataFrame
         for optional_col in ["Action", "Detail", "Type"]:
             if optional_col not in sub.columns:
                 sub[optional_col] = ""
+        sub["Source"] = sub["Source"].astype("category")
         frames.append(sub)
 
     if not frames:
         return pd.DataFrame(columns=["Time", "Lat", "Lon", "Source", "Action", "Detail", "Type"])
 
-    return pd.concat(frames, ignore_index=True)
+    combined = pd.concat(frames, ignore_index=True)
+    combined["Action"] = combined["Action"].fillna("").astype(str)
+    combined["Detail"] = combined["Detail"].fillna("").astype(str).str.slice(0, MAX_DETAIL_CHARS)
+    combined["Type"] = combined["Type"].fillna("").astype(str)
+    return combined
 
 
 def _view_state(points: pd.DataFrame) -> pdk.ViewState:
@@ -106,12 +136,16 @@ def _aggregate_cells(points: pd.DataFrame, cell_m: int, max_cells: int) -> pd.Da
     lat_step = cell_m / 111_000.0
     lon_step = cell_m / (111_000.0 * max(np.cos(np.deg2rad(center_lat)), 0.2))
 
-    work = points[["Lat", "Lon", "Source"]].copy()
-    work["lat_cell"] = np.floor(work["Lat"] / lat_step) * lat_step
-    work["lon_cell"] = np.floor(work["Lon"] / lon_step) * lon_step
+    lat_cell = np.floor(points["Lat"].to_numpy() / lat_step) * lat_step
+    lon_cell = np.floor(points["Lon"].to_numpy() / lon_step) * lon_step
+    work = pd.DataFrame({
+        "lat_cell": lat_cell,
+        "lon_cell": lon_cell,
+        "Source": points["Source"].to_numpy(),
+    })
     grouped = (
         work.groupby(["lat_cell", "lon_cell"], observed=True)
-        .agg(count=("Lat", "size"), sources=("Source", lambda s: ", ".join(sorted(set(s)))))
+        .agg(count=("Source", "size"), sources=("Source", lambda s: ", ".join(sorted(set(s)))))
         .reset_index()
     )
     grouped["Lat"] = grouped["lat_cell"] + lat_step / 2
@@ -138,11 +172,20 @@ def _aggregate_cells(points: pd.DataFrame, cell_m: int, max_cells: int) -> pd.Da
     lon0 = grouped["lon_cell"]
     lat1 = lat0 + lat_step
     lon1 = lon0 + lon_step
-    grouped["polygon"] = [
+    return grouped
+
+
+def _polygonize_cells(cells: pd.DataFrame) -> pd.DataFrame:
+    cells = cells.copy()
+    lat0 = cells["lat_cell"]
+    lon0 = cells["lon_cell"]
+    lat1 = cells["lat_max"]
+    lon1 = cells["lon_max"]
+    cells["polygon"] = [
         [[float(a), float(b)], [float(c), float(b)], [float(c), float(d)], [float(a), float(d)]]
         for a, b, c, d in zip(lon0, lat0, lon1, lat1)
     ]
-    return grouped
+    return cells
 
 
 def _sample_points(points: pd.DataFrame, max_points: int) -> pd.DataFrame:
@@ -160,6 +203,38 @@ def _sample_points(points: pd.DataFrame, max_points: int) -> pd.DataFrame:
         "Lat", "Lon", "LatText", "LonText", "Source", "Action", "Detail", "Type",
         "TimeText", "TooltipTitle", "TooltipDetail", "color",
     ]]
+
+
+def _get_locations(source_data: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    key = _cache_key("locations")
+    return _cache_get_or_set(key, lambda: _collect_location_data(source_data))
+
+
+def _get_filtered(points: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    key = _cache_key("filtered", start.isoformat(), end.isoformat())
+    return _cache_get_or_set(key, lambda: points[(points["Time"] >= start) & (points["Time"] <= end)])
+
+
+def _get_cells(points: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, cell_m: int, max_cells: int) -> pd.DataFrame:
+    key = _cache_key("cells", start.isoformat(), end.isoformat(), cell_m, max_cells)
+    return _cache_get_or_set(key, lambda: _aggregate_cells(points, cell_m, max_cells))
+
+
+def _get_sampled_points(points: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, max_points: int) -> pd.DataFrame:
+    key = _cache_key("dots", start.isoformat(), end.isoformat(), max_points)
+    return _cache_get_or_set(key, lambda: _sample_points(points, max_points))
+
+
+def _get_portal_overlay(portal_history: pd.DataFrame | None, max_portals: int = 2500) -> pd.DataFrame:
+    if portal_history is None:
+        return pd.DataFrame()
+    key = _cache_key("portal-overlay", max_portals)
+    return _cache_get_or_set(key, lambda: _prepare_portals(portal_history, max_portals=max_portals))
+
+
+def _get_portal_frame(portal_history: pd.DataFrame | None) -> pd.DataFrame:
+    key = _cache_key("portal-frame")
+    return _cache_get_or_set(key, lambda: _portal_frame(portal_history))
 
 
 def _clean_value(value) -> str:
@@ -261,8 +336,7 @@ def _cell_activity(points: pd.DataFrame, obj: dict) -> pd.DataFrame:
     ].copy()
 
 
-def _cell_portals(portal_history: pd.DataFrame | None, obj: dict) -> pd.DataFrame:
-    portals = _portal_frame(portal_history)
+def _cell_portals(portals: pd.DataFrame, obj: dict) -> pd.DataFrame:
     required = ["lat_min", "lat_max", "lon_min", "lon_max"]
     if len(portals) == 0 or not all(k in obj for k in required):
         return pd.DataFrame()
@@ -280,8 +354,7 @@ def _distance_m(lat1: float, lon1: float, lat2: pd.Series, lon2: pd.Series) -> p
     return np.sqrt(((lat2 - lat1) * lat_scale) ** 2 + ((lon2 - lon1) * lon_scale) ** 2)
 
 
-def _nearby_portals(portal_history: pd.DataFrame | None, lat: float, lon: float, limit: int = 5) -> pd.DataFrame:
-    portals = _portal_frame(portal_history)
+def _nearby_portals(portals: pd.DataFrame, lat: float, lon: float, limit: int = 5) -> pd.DataFrame:
     if len(portals) == 0:
         return pd.DataFrame()
     portals = portals.copy()
@@ -296,9 +369,9 @@ def _display_frame(df: pd.DataFrame, columns: list[str], limit: int = 100) -> No
     st.dataframe(df[show_cols].head(limit), width="stretch", hide_index=True)
 
 
-def _show_cell_drilldown(points: pd.DataFrame, portal_history: pd.DataFrame | None, obj: dict) -> None:
+def _show_cell_drilldown(points: pd.DataFrame, portals: pd.DataFrame, obj: dict) -> None:
     cell_points = _cell_activity(points, obj)
-    cell_portals = _cell_portals(portal_history, obj)
+    cell_portals = _cell_portals(portals, obj)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Activity in cell", f"{len(cell_points):,}")
@@ -342,10 +415,10 @@ def _show_cell_drilldown(points: pd.DataFrame, portal_history: pd.DataFrame | No
         )
 
 
-def _show_point_context(portal_history: pd.DataFrame | None, obj: dict) -> None:
+def _show_point_context(portals: pd.DataFrame, obj: dict) -> None:
     if "Lat" not in obj or "Lon" not in obj:
         return
-    nearby = _nearby_portals(portal_history, float(obj["Lat"]), float(obj["Lon"]))
+    nearby = _nearby_portals(portals, float(obj["Lat"]), float(obj["Lon"]))
     if len(nearby) == 0:
         return
     nearby = nearby.copy()
@@ -362,7 +435,7 @@ def _show_selected_details(
     layer_id: str | None,
     obj: dict | None,
     points: pd.DataFrame,
-    portal_history: pd.DataFrame | None,
+    portals: pd.DataFrame,
 ) -> None:
     if not layer_id or not obj:
         st.info("Click a rendered point, cell, or portal overlay marker to inspect it.")
@@ -391,12 +464,12 @@ def _show_selected_details(
         st.write(obj)
 
     if layer_id in {"density-cells", "grid-cells"}:
-        _show_cell_drilldown(points, portal_history, obj)
+        _show_cell_drilldown(points, portals, obj)
     elif layer_id == "activity-dots":
-        _show_point_context(portal_history, obj)
+        _show_point_context(portals, obj)
 
 
-locs = _collect_location_data(data)
+locs = _get_locations(data)
 if len(locs) == 0:
     st.warning("No location data available.")
     st.stop()
@@ -447,7 +520,7 @@ with st.sidebar:
 
 start = _as_utc(t1)
 end = _as_utc(t2)
-filtered = locs[(locs["Time"] >= start) & (locs["Time"] <= end)]
+filtered = _get_filtered(locs, start, end)
 
 if len(filtered) == 0:
     st.info("No points in range.")
@@ -457,7 +530,7 @@ layers = []
 tooltip = {"text": "{TooltipTitle}\n{TooltipDetail}"}
 
 if mode == "Dot Scatter":
-    render_points = _sample_points(filtered, max_dots)
+    render_points = _get_sampled_points(filtered, start, end, max_dots)
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
@@ -474,12 +547,13 @@ if mode == "Dot Scatter":
     )
     rendered = len(render_points)
 else:
-    cells = _aggregate_cells(filtered, cell_m, max_cells)
+    cells = _get_cells(filtered, start, end, cell_m, max_cells)
     if len(cells) == 0:
         st.info("No cells in range.")
         st.stop()
 
     if mode == "Grid Cells":
+        cells = _polygonize_cells(cells)
         layers.append(
             pdk.Layer(
                 "PolygonLayer",
@@ -513,7 +587,7 @@ else:
 if show_portals:
     ph = data.get("portal_history")
     if ph is not None and len(ph) > 0 and {"Lat", "Lon"}.issubset(ph.columns):
-        portals = _prepare_portals(ph)
+        portals = _get_portal_overlay(ph)
         layers.append(
             pdk.Layer(
                 "ScatterplotLayer",
@@ -551,7 +625,8 @@ chart_state = st.pydeck_chart(
 )
 
 layer_id, selected = _selected_object(chart_state)
-_show_selected_details(layer_id, selected, filtered, data.get("portal_history"))
+portal_frame = _get_portal_frame(data.get("portal_history"))
+_show_selected_details(layer_id, selected, filtered, portal_frame)
 
 if mode != "Dot Scatter":
     st.caption(

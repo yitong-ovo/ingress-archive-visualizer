@@ -52,7 +52,7 @@ if subs is not None and len(subs) > 0:
         yaxis=dict(showticklabels=False, showgrid=False, range=[0, 2]),
         showlegend=False,
     )
-    st.plotly_chart(fig_sub, use_container_width=True)
+    st.plotly_chart(fig_sub, width="stretch")
     st.caption(f"**{len(subs)}** monthly renewals across **{len(periods)}** subscription period(s). "
                f"Periods more than 35 days apart are shown as separate bars.")
 else:
@@ -76,7 +76,7 @@ with c1:
                 hovertemplate="%{x|%Y-%m-%d}: %{y} CMU<extra></extra>",
             ))
             fig_cmu.update_layout(height=300, margin=dict(l=10, r=10, t=5, b=5), yaxis_title="CMU")
-            st.plotly_chart(fig_cmu, use_container_width=True)
+            st.plotly_chart(fig_cmu, width="stretch")
 
 with c2:
     st.subheader("CMU Spending")
@@ -94,9 +94,9 @@ with c2:
                     hovertemplate="%{label}: %{value:.0f} CMU<extra></extra>",
                 ))
                 fig_sp.update_layout(height=300, margin=dict(l=10, r=10, t=5, b=5), showlegend=False)
-                st.plotly_chart(fig_sp, use_container_width=True)
+                st.plotly_chart(fig_sp, width="stretch")
 
 st.subheader("Recent Transactions")
 if store is not None:
     cols = [c for c in ["Time", "TransactionType", "Item", "NewCMUBalance"] if c in store.columns]
-    st.dataframe(store[cols].tail(30), use_container_width=True, hide_index=True)
+    st.dataframe(store[cols].tail(30), width="stretch", hide_index=True)

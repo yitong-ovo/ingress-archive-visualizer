@@ -13,6 +13,10 @@ import pandas as pd
 
 st.title("Activity Analysis")
 
+
+def week_start(series: pd.Series) -> pd.Series:
+    return series.dt.tz_convert(None).dt.to_period("W").dt.start_time
+
 h_df = data.get("hacks")
 dep = data.get("deploys")
 links = data.get("links_created")
@@ -22,12 +26,12 @@ fields = data.get("regions_created")
 st.subheader("Weekly Activity Trend")
 if h_df is not None and len(h_df) > 0:
     h = h_df.copy()
-    h["Week"] = h["Time"].dt.to_period("W").dt.start_time
+    h["Week"] = week_start(h["Time"])
     w = h.groupby("Week").size().reset_index(name="Hacks")
     for df_k, lbl in [(dep, "Deploys"), (links, "Links"), (fields, "Fields")]:
         if df_k is not None and len(df_k) > 0:
             df_k = df_k.copy()
-            df_k["Week"] = df_k["Time"].dt.to_period("W").dt.start_time
+            df_k["Week"] = week_start(df_k["Time"])
             w = w.merge(df_k.groupby("Week").size().reset_index(name=lbl), on="Week", how="outer")
     w = w.fillna(0).sort_values("Week")
     colors = {"Hacks": "#4CAF50", "Deploys": "#2196F3", "Links": "#FF9800", "Fields": "#9C27B0"}
@@ -41,7 +45,7 @@ if h_df is not None and len(h_df) > 0:
             ))
     fig.update_layout(height=320, margin=dict(l=10, r=10, t=5, b=5),
                       legend=dict(orientation="h", y=1.1), xaxis_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 else:
     st.info("No hack data.")
 
@@ -65,7 +69,7 @@ with c1:
             hovertemplate="%{y} %{x}: %{z} " + src_label.lower() + "<extra></extra>",
         ))
         fig2.update_layout(height=300, margin=dict(l=10, r=10, t=5, b=5))
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width="stretch")
     else:
         st.info(f"No {src_label} data.")
 
@@ -99,7 +103,7 @@ with c2:
                            ticktext=["0", "30m", "1h", "1h30m", "2h", "3h", "4h"]),
                 yaxis_title="Sessions", bargap=0.05,
             )
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width="stretch")
         else:
             st.info("No session duration data.")
     else:
@@ -118,4 +122,4 @@ if h_df is not None and len(h_df) > 0:
         hovertemplate="%{x|%Y-%m-%d}: %{y:,} hacks<extra></extra>",
     ))
     fig4.update_layout(height=250, margin=dict(l=10, r=10, t=5, b=5))
-    st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(fig4, width="stretch")

@@ -48,7 +48,7 @@ if pts:
         hovertemplate="%{x}: %{y} points<extra></extra>",
     ))
     fig.update_layout(height=380, margin=dict(l=10, r=10, t=5, b=80), xaxis=dict(tickangle=-45))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 # ── anomaly portals ──
 anomaly_keys = {
@@ -97,4 +97,4 @@ if ss is not None and len(ss) > 0:
     ss_c = ss_dates.value_counts().sort_index()
     fig_ss = go.Figure(data=go.Bar(x=ss_c.index, y=ss_c.values, marker_color="#2196F3"))
     fig_ss.update_layout(height=200, margin=dict(l=10, r=10, t=5, b=60), xaxis=dict(tickangle=-45))
-    st.plotly_chart(fig_ss, use_container_width=True)
+    st.plotly_chart(fig_ss, width="stretch")

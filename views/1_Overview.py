@@ -90,7 +90,7 @@ with left:
         fig.update_layout(height=280, margin=dict(l=10, r=10, t=5, b=5),
                           xaxis_title="", yaxis_title="Count",
                           legend=dict(orientation="h", y=1.1, font=dict(size=10)))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Select actions to display.")
 
@@ -115,7 +115,7 @@ with right:
             hovertemplate="%{label}: %{value:,}<extra></extra>",
         ))
         fig_pie.update_layout(height=280, margin=dict(l=10, r=10, t=5, b=5), showlegend=False)
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
     else:
         st.info("No action data.")
 
@@ -153,6 +153,6 @@ if h_df is not None:
         name="Est. AP",
     ))
     fig_ap.update_layout(height=280, margin=dict(l=10, r=10, t=5, b=5), xaxis_title="", yaxis_title="Million AP")
-    st.plotly_chart(fig_ap, use_container_width=True)
+    st.plotly_chart(fig_ap, width="stretch")
 else:
     st.info("Not enough data for AP estimate.")

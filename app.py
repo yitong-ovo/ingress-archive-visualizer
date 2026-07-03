@@ -275,6 +275,7 @@ def render_source_page():
 def _switch_source():
     for k in ["source_loaded", "source_id", "source_name", "data", "load_now"]:
         st.session_state[k] = None
+    st.session_state.pop("_map_cache", None)
 
 
 # ── main flow ─────────────────────────────────────────────────
@@ -293,4 +294,4 @@ else:
         ],
     })
     pg.run()
-    st.sidebar.button("🔄 Switch source", on_click=_switch_source, use_container_width=True)
+    st.sidebar.button("🔄 Switch source", on_click=_switch_source, width="stretch")
