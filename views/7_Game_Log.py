@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from data_loader import decode_export_text_field
+from data_loader import decode_export_text_series
 from time_utils import local_month_start, local_time_text, timezone_selector, to_local_time
 
 st.set_page_config(page_title="Game Log", page_icon="🧾", layout="wide")
@@ -48,11 +48,11 @@ RARE_ITEM_PATTERNS = {
 
 ITEM_EVENT_PATTERNS = {
     "Hacked": r"\bhack|disbursed|created .*portal hack|created boosted power cube|created interest capsule",
-    "Used": r"\buse(d)?\b|\bactivate|\bfire|\bflip|\bconsume|player consumed",
+    "Used": r"\buse(?:d)?\b|\bactivate|\bfire|\bflip|\bconsume|player consumed",
     "Deployed": r"\bdeploy|\binstall|added powerup",
-    "Acquired": r"\bacquir|\bobtain|\breceiv|\breward|\bpick(ed)? up|\bcreated|\bcomplete|generated",
+    "Acquired": r"\bacquir|\bobtain|\breceiv|\breward|\bpick(?:ed)? up|\bcreated|\bcomplete|generated",
     "Recycled": r"\brecycl",
-    "Dropped": r"\bdrop(ped)?\b",
+    "Dropped": r"\bdrop(?:ped)?\b",
 }
 FUTURE_CUTOFF = pd.Timestamp.now(tz="UTC").normalize() + pd.Timedelta(days=1)
 PREPARE_VERSION = 4
@@ -66,7 +66,7 @@ def prepare_game_log(df: pd.DataFrame, source_id: str, tz_name: str) -> pd.DataF
     out["Lat"] = pd.to_numeric(out["Lat"], errors="coerce")
     out["Lon"] = pd.to_numeric(out["Lon"], errors="coerce")
     out["Action"] = out["Action"].fillna("").astype(str)
-    out["Detail"] = out["Detail"].fillna("").astype(str).map(decode_export_text_field)
+    out["Detail"] = decode_export_text_series(out["Detail"])
     out = out.dropna(subset=["Time"])
     out.attrs["raw_rows"] = raw_rows
     out.attrs["invalid_time_rows"] = invalid_time_rows
@@ -82,12 +82,12 @@ def prepare_game_log(df: pd.DataFrame, source_id: str, tz_name: str) -> pd.DataF
 
     gap_min = out["Time"].diff().dt.total_seconds().div(60)
     out["SessionID"] = (gap_min.isna() | (gap_min > 30)).cumsum()
-    out["ItemName"] = out.apply(match_item, axis=1)
-    out["ItemEvent"] = out.apply(classify_item_event, axis=1)
-    out["ResourceType"] = out["Detail"].apply(extract_resource_type)
-    out["RewardStatus"] = out["Detail"].apply(extract_reward_status)
-    out["RpcEndpoint"] = out["Detail"].apply(extract_rpc_endpoint)
-    out["PowerupDesignation"] = out["Detail"].apply(extract_powerup_designation)
+    out["ItemName"] = match_items(out["Action"], out["Detail"])
+    out["ItemEvent"] = classify_item_events(out["Action"], out["Detail"], out["ItemName"])
+    out["ResourceType"] = extract_resource_types(out["Detail"])
+    out["RewardStatus"] = extract_reward_statuses(out["Detail"])
+    out["RpcEndpoint"] = extract_rpc_endpoints(out["Detail"])
+    out["PowerupDesignation"] = extract_powerup_designations(out["Detail"])
     return out
 
 
@@ -109,6 +109,17 @@ def match_item(row: pd.Series) -> str:
     return ""
 
 
+def match_items(action: pd.Series, detail: pd.Series) -> pd.Series:
+    text = (action.fillna("").astype(str) + " " + detail.fillna("").astype(str)).str.lower()
+    out = pd.Series("", index=text.index, dtype="object")
+    for name, pattern in RARE_ITEM_PATTERNS.items():
+        missing = out.eq("")
+        if not missing.any():
+            break
+        out.loc[missing & text.str.contains(pattern, regex=True, na=False)] = name
+    return out
+
+
 def classify_item_event(row: pd.Series) -> str:
     if not row.get("ItemName"):
         return ""
@@ -117,6 +128,21 @@ def classify_item_event(row: pd.Series) -> str:
         if re.search(pattern, text, flags=re.IGNORECASE):
             return label
     return "Mentioned"
+
+
+def classify_item_events(action: pd.Series, detail: pd.Series, item_name: pd.Series) -> pd.Series:
+    has_item = item_name.fillna("").astype(str).ne("")
+    text = (action.fillna("").astype(str) + " " + detail.fillna("").astype(str)).str.lower()
+    out = pd.Series("", index=text.index, dtype="object")
+    if not has_item.any():
+        return out
+    out.loc[has_item] = "Mentioned"
+    for label, pattern in ITEM_EVENT_PATTERNS.items():
+        candidates = has_item & out.eq("Mentioned")
+        if not candidates.any():
+            break
+        out.loc[candidates & text.str.contains(pattern, regex=True, na=False)] = label
+    return out
 
 
 def extract_resource_type(detail: str) -> str:
@@ -132,6 +158,24 @@ def extract_resource_type(detail: str) -> str:
         if match:
             return match.group(1).strip()
     return ""
+
+
+def extract_resource_types(detail: pd.Series) -> pd.Series:
+    text = detail.fillna("").astype(str)
+    out = pd.Series("", index=text.index, dtype="object")
+    patterns = [
+        r"Resource of type:\s*([A-Z0-9_]+)",
+        r"Dropped\s+([A-Za-z0-9 -]*PortalLinkKey)",
+        r"Dropped\s+(Portal Mod)",
+        r"Dropped\s+(Media Item)",
+    ]
+    for pattern in patterns:
+        missing = out.eq("")
+        if not missing.any():
+            break
+        extracted = text.loc[missing].str.extract(pattern, flags=re.IGNORECASE, expand=False).fillna("")
+        out.loc[missing] = extracted.str.strip()
+    return out
 
 
 def extract_reward_status(detail: str) -> str:
@@ -152,11 +196,34 @@ def extract_reward_status(detail: str) -> str:
     return "other"
 
 
+def extract_reward_statuses(detail: pd.Series) -> pd.Series:
+    text = detail.fillna("").astype(str).str.strip()
+    known = {
+        "Redeemed Portal Mod",
+        "generated",
+        "success",
+        "player",
+        "reached player redemption limit",
+        "reached global redemption limit",
+        "invalid passcode",
+    }
+    out = pd.Series("other", index=text.index, dtype="object")
+    out.loc[text.eq("")] = "blank"
+    known_mask = text.isin(known)
+    out.loc[known_mask] = text.loc[known_mask]
+    return out
+
+
 def extract_rpc_endpoint(detail: str) -> str:
     text = str(detail).strip()
     if text.startswith("uri: "):
         return text[5:]
     return ""
+
+
+def extract_rpc_endpoints(detail: pd.Series) -> pd.Series:
+    text = detail.fillna("").astype(str).str.strip()
+    return text.where(text.str.startswith("uri: "), "").str.removeprefix("uri: ")
 
 
 def extract_powerup_designation(detail: str) -> str:
@@ -171,6 +238,23 @@ def extract_powerup_designation(detail: str) -> str:
         if match:
             return match.group(1).strip().rstrip(".")
     return ""
+
+
+def extract_powerup_designations(detail: pd.Series) -> pd.Series:
+    text = detail.fillna("").astype(str)
+    out = pd.Series("", index=text.index, dtype="object")
+    patterns = [
+        r"designation\s+([A-Z0-9_-]+)",
+        r"Designation:\s*([A-Z0-9_-]+)",
+        r"active designation\s+([A-Z0-9_-]+)",
+    ]
+    for pattern in patterns:
+        missing = out.eq("")
+        if not missing.any():
+            break
+        extracted = text.loc[missing].str.extract(pattern, flags=re.IGNORECASE, expand=False).fillna("")
+        out.loc[missing] = extracted.str.strip().str.rstrip(".")
+    return out
 
 
 def metric_value(value: int | float) -> str:

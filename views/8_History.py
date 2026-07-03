@@ -33,6 +33,7 @@ LOCATION_SOURCE_COLORS = {
     "Portal History": [156, 39, 176, 125],
     "POI Submissions": [96, 125, 139, 150],
 }
+HISTORY_CACHE_VERSION = 1
 
 
 def fmt_int(value) -> str:
@@ -54,6 +55,10 @@ def data_frame(key: str) -> pd.DataFrame | None:
     if df is None or len(df) == 0:
         return None
     return df
+
+
+def _history_cache_key(name: str, *parts) -> tuple:
+    return (st.session_state.get("source_id", ""), name, HISTORY_CACHE_VERSION, *parts)
 
 
 def with_time(df: pd.DataFrame | None, exclude_future: bool = True) -> pd.DataFrame | None:
@@ -95,6 +100,11 @@ def aggregate_value(df: pd.DataFrame | None, mode: str) -> float:
 
 
 def daily_metric(key: str, mode: str = "count") -> pd.DataFrame:
+    cache = st.session_state.setdefault("_history_daily_cache", {})
+    cache_key = _history_cache_key("daily", key, mode, exclude_future, tz_name)
+    if cache_key in cache:
+        return cache[cache_key]
+
     df = with_time(data_frame(key), exclude_future)
     if df is None or len(df) == 0:
         return pd.DataFrame(columns=["Date", "Value"])
@@ -107,7 +117,9 @@ def daily_metric(key: str, mode: str = "count") -> pd.DataFrame:
     else:
         out = work.groupby("Date").size().reset_index(name="Value")
     out["Date"] = pd.to_datetime(out["Date"])
-    return out.sort_values("Date")
+    out = out.sort_values("Date")
+    cache[cache_key] = out
+    return out
 
 
 def top_daily_records(records: list[dict], n: int = 20) -> pd.DataFrame:
@@ -180,6 +192,14 @@ def location_points(exclude_zero: bool, exclude_future: bool) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame(columns=["Lat", "Lon", "Source"])
     return pd.concat(frames, ignore_index=True)
+
+
+def cached_location_points(exclude_zero: bool, exclude_future: bool) -> pd.DataFrame:
+    cache = st.session_state.setdefault("_history_location_cache", {})
+    cache_key = _history_cache_key("location-points", exclude_zero, exclude_future)
+    if cache_key not in cache:
+        cache[cache_key] = location_points(exclude_zero, exclude_future)
+    return cache[cache_key]
 
 
 def haversine_km(lat1, lon1, lat2, lon2) -> np.ndarray:
@@ -297,6 +317,27 @@ def build_geo_clusters(points: pd.DataFrame, cluster_size: float, tz_name: str) 
     )
     work = work.merge(summary[["Cluster", "Place", "Rank"]], on="Cluster", how="left")
     return summary.sort_values("Points", ascending=False), work
+
+
+def cached_geo_clusters(
+    points: pd.DataFrame,
+    cluster_size: float,
+    tz_name: str,
+    exclude_zero: bool,
+    exclude_future: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    cache = st.session_state.setdefault("_history_geo_cluster_cache", {})
+    cache_key = _history_cache_key(
+        "geo-clusters",
+        round(float(cluster_size), 6),
+        tz_name,
+        exclude_zero,
+        exclude_future,
+    )
+    if cache_key not in cache:
+        cache.clear()
+        cache[cache_key] = build_geo_clusters(points, cluster_size, tz_name)
+    return cache[cache_key]
 
 
 def yearly_marker_layers(timed_points: pd.DataFrame, places: pd.DataFrame, mode: str) -> tuple[list[pdk.Layer], pd.DataFrame]:
@@ -604,7 +645,7 @@ with tab_records:
 
 with tab_geo:
     st.subheader("Geographic Journey")
-    loc = location_points(exclude_zero, exclude_future)
+    loc = cached_location_points(exclude_zero, exclude_future)
     if len(loc) == 0:
         st.info("No location-bearing sources available.")
     else:
@@ -629,7 +670,7 @@ with tab_geo:
             f"Current cluster cell is roughly {approx_ns_km:.1f} km north-south by {approx_ew_km:.1f} km east-west near your median latitude. "
             "Use 0.005-0.010 for neighborhood-level review, 0.020 for district-level history, and 0.050+ for city/travel-level summaries."
         )
-        places, tagged_loc = build_geo_clusters(loc, geo_cluster_size, tz_name)
+        places, tagged_loc = cached_geo_clusters(loc, geo_cluster_size, tz_name, exclude_zero, exclude_future)
 
         left, right = st.columns([2, 3])
         with left:

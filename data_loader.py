@@ -266,6 +266,13 @@ def _read_text_lines(source: FileSource) -> list[str]:
         return split_physical_lines(f.read())
 
 
+def _read_first_line(source: FileSource) -> str:
+    if isinstance(source, bytes):
+        return source.splitlines()[0].decode("utf-8") if source else ""
+    with open(source, "r", encoding="utf-8") as f:
+        return f.readline().removesuffix("\n").removesuffix("\r")
+
+
 def _source_size(source: FileSource) -> int:
     if isinstance(source, bytes):
         return len(source)
@@ -287,6 +294,15 @@ def decode_export_text_field(value: str) -> str:
         return value.encode("latin1").decode("utf-8")
     except (UnicodeEncodeError, UnicodeDecodeError):
         return value
+
+
+def decode_export_text_series(series: pd.Series) -> pd.Series:
+    text = series.fillna("").astype(str)
+    markers = r"Ã|Â|å|æ|ç|è|é|ä|ï|ð"
+    needs_decode = text.str.contains(markers, regex=True, na=False)
+    if needs_decode.any():
+        text.loc[needs_decode] = text.loc[needs_decode].map(decode_export_text_field)
+    return text
 
 
 # ── file parsers ──────────────────────────────────────────────
@@ -329,8 +345,7 @@ def _parse_file(key: str, path: FileSource, has_pj: bool) -> pd.DataFrame | None
 def _parse_generic_tsv(key: str, path: FileSource, has_pj: bool) -> pd.DataFrame | None:
     """Try to auto-detect column format."""
     try:
-        lines = _read_text_lines(path)
-        header = lines[0].strip() if lines else ""
+        header = _read_first_line(path).strip()
     except Exception:
         return None
 
@@ -369,6 +384,50 @@ def _parse_simple_tsv(
 
 
 def _parse_game_log(path: FileSource) -> pd.DataFrame | None:
+    try:
+        df = _read_csv(
+            path,
+            sep="\t",
+            encoding="utf-8",
+            on_bad_lines="skip",
+            names=["Time", "Lat", "Lon", "Action", "Detail"],
+            header=0,
+            dtype=str,
+            low_memory=False,
+        )
+        if len(df) == 0:
+            return None
+
+        # Single-column text fragments appear in some exports; the previous
+        # parser ignored them because they do not have the required TSV fields.
+        df = df.dropna(subset=["Time", "Lat", "Lon", "Action"])
+        if len(df) == 0:
+            return None
+
+        parsed_time = pd.to_datetime(
+            df["Time"],
+            errors="coerce",
+            utc=True,
+            format="%Y-%m-%d %H:%M:%S UTC",
+        )
+        bad_time = parsed_time.isna() & df["Time"].notna()
+        if bad_time.any():
+            parsed_time.loc[bad_time] = pd.to_datetime(
+                df.loc[bad_time, "Time"],
+                errors="coerce",
+                utc=True,
+            )
+        df["Time"] = parsed_time
+        df["Lat"] = pd.to_numeric(df["Lat"], errors="coerce")
+        df["Lon"] = pd.to_numeric(df["Lon"], errors="coerce")
+        df["Action"] = df["Action"].fillna("").astype(str)
+        df["Detail"] = decode_export_text_series(df["Detail"])
+        return df
+    except Exception:
+        return _parse_game_log_slow(path)
+
+
+def _parse_game_log_slow(path: FileSource) -> pd.DataFrame | None:
     rows = []
     for line in _read_text_lines(path)[1:]:
         if not line.strip():
@@ -387,7 +446,7 @@ def _parse_game_log(path: FileSource) -> pd.DataFrame | None:
     df["Time"] = pd.to_datetime(df["Time"], errors="coerce", utc=True, format="mixed")
     df["Lat"] = pd.to_numeric(df["Lat"], errors="coerce")
     df["Lon"] = pd.to_numeric(df["Lon"], errors="coerce")
-    df["Detail"] = df["Detail"].map(decode_export_text_field)
+    df["Detail"] = decode_export_text_series(df["Detail"])
     return df
 
 

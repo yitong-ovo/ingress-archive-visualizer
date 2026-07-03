@@ -41,8 +41,20 @@ def do_load(zip_b64: str, password: str, fname: str, fsize: int):
         st.session_state.source_loaded = True
         st.session_state.source_id = sid
         st.session_state.source_name = fname
+        _clear_derived_caches()
     except Exception as e:
         st.error(f"Failed: {e}")
+
+
+def _clear_derived_caches():
+    for key in [
+        "_map_cache",
+        "_game_log_cache",
+        "_history_daily_cache",
+        "_history_location_cache",
+        "_history_geo_cluster_cache",
+    ]:
+        st.session_state.pop(key, None)
 
 
 # ── v2 component: IndexedDB manager ───────────────────────────
@@ -275,8 +287,7 @@ def render_source_page():
 def _switch_source():
     for k in ["source_loaded", "source_id", "source_name", "data", "load_now"]:
         st.session_state[k] = None
-    st.session_state.pop("_map_cache", None)
-    st.session_state.pop("_game_log_cache", None)
+    _clear_derived_caches()
 
 
 # ── main flow ─────────────────────────────────────────────────
