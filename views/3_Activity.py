@@ -10,12 +10,12 @@ data = st.session_state.data
 
 import plotly.graph_objects as go
 import pandas as pd
+from time_utils import local_date, local_week_start, timezone_selector, to_local_time
 
 st.title("Activity Analysis")
 
-
-def week_start(series: pd.Series) -> pd.Series:
-    return series.dt.tz_convert(None).dt.to_period("W").dt.start_time
+tz_name = timezone_selector()
+st.caption(f"Time-based charts use display timezone: **{tz_name}**")
 
 h_df = data.get("hacks")
 dep = data.get("deploys")
@@ -26,12 +26,12 @@ fields = data.get("regions_created")
 st.subheader("Weekly Activity Trend")
 if h_df is not None and len(h_df) > 0:
     h = h_df.copy()
-    h["Week"] = week_start(h["Time"])
+    h["Week"] = local_week_start(h["Time"], tz_name)
     w = h.groupby("Week").size().reset_index(name="Hacks")
     for df_k, lbl in [(dep, "Deploys"), (links, "Links"), (fields, "Fields")]:
         if df_k is not None and len(df_k) > 0:
             df_k = df_k.copy()
-            df_k["Week"] = week_start(df_k["Time"])
+            df_k["Week"] = local_week_start(df_k["Time"], tz_name)
             w = w.merge(df_k.groupby("Week").size().reset_index(name=lbl), on="Week", how="outer")
     w = w.fillna(0).sort_values("Week")
     colors = {"Hacks": "#4CAF50", "Deploys": "#2196F3", "Links": "#FF9800", "Fields": "#9C27B0"}
@@ -58,8 +58,9 @@ with c1:
     src_df = data.get(sources[src_label])
     if src_df is not None and len(src_df) > 0:
         s = src_df.copy()
-        s["Hour"] = s["Time"].dt.hour
-        s["DOW"] = s["Time"].dt.dayofweek
+        local_time = to_local_time(s["Time"], tz_name)
+        s["Hour"] = local_time.dt.hour
+        s["DOW"] = local_time.dt.dayofweek
         heat = s.groupby(["DOW", "Hour"]).size().unstack(fill_value=0)
         heat = heat.reindex(index=range(7), columns=range(24), fill_value=0)
         days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
@@ -113,7 +114,7 @@ with c2:
 st.subheader("Cumulative Hacks")
 if h_df is not None and len(h_df) > 0:
     h = h_df.copy()
-    h["Date"] = h["Time"].dt.date
+    h["Date"] = local_date(h["Time"], tz_name)
     cum = h.groupby("Date").size().cumsum()
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(

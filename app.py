@@ -276,6 +276,7 @@ def _switch_source():
     for k in ["source_loaded", "source_id", "source_name", "data", "load_now"]:
         st.session_state[k] = None
     st.session_state.pop("_map_cache", None)
+    st.session_state.pop("_game_log_cache", None)
 
 
 # ── main flow ─────────────────────────────────────────────────
@@ -291,6 +292,8 @@ else:
             st.Page("views/4_Badges.py", title="Badges", icon="🏅"),
             st.Page("views/5_Economy.py", title="Economy", icon="💰"),
             st.Page("views/6_Events.py", title="Events", icon="🎯"),
+            st.Page("views/7_Game_Log.py", title="Game Log", icon="🧾"),
+            st.Page("views/8_History.py", title="History", icon="📚"),
         ],
     })
     pg.run()

@@ -12,6 +12,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
+from time_utils import local_date, timezone_selector
+
+tz_name = timezone_selector()
 
 # ── KPI bar (2 rows) ──
 prof_df = data.get("_profile")
@@ -75,7 +78,7 @@ with left:
         df = data.get(dk)
         if df is not None and len(df) > 0:
             d = df.copy()
-            d["Date"] = d["Time"].dt.date
+            d["Date"] = local_date(d["Time"], tz_name)
             daily = d.groupby("Date").size().reset_index(name=label)
             daily["Date"] = pd.to_datetime(daily["Date"])
             daily = daily.sort_values("Date")
@@ -125,23 +128,23 @@ st.caption("Estimated from action values: Hack=100, Deploy=125, Link=313, Field=
 
 if h_df is not None:
     h = h_df.copy()
-    h["Date"] = h["Time"].dt.date
+    h["Date"] = pd.to_datetime(local_date(h["Time"], tz_name))
     date_range = pd.date_range(h["Date"].min(), h["Date"].max(), freq="D")
     cum = pd.Series(0.0, index=date_range)
 
     cum = cum.add(h.groupby("Date").size() * 100, fill_value=0)
     if dep is not None:
-        dep_c = dep.copy(); dep_c["Date"] = dep_c["Time"].dt.date
+        dep_c = dep.copy(); dep_c["Date"] = pd.to_datetime(local_date(dep_c["Time"], tz_name))
         cum = cum.add(dep_c.groupby("Date").size() * 125, fill_value=0)
     if links is not None:
-        links_c = links.copy(); links_c["Date"] = links_c["Time"].dt.date
+        links_c = links.copy(); links_c["Date"] = pd.to_datetime(local_date(links_c["Time"], tz_name))
         cum = cum.add(links_c.groupby("Date").size() * 313, fill_value=0)
     if fields is not None:
-        fields_c = fields.copy(); fields_c["Date"] = fields_c["Time"].dt.date
+        fields_c = fields.copy(); fields_c["Date"] = pd.to_datetime(local_date(fields_c["Time"], tz_name))
         cum = cum.add(fields_c.groupby("Date").size() * 1250, fill_value=0)
     resos = data.get("resonators_destroyed")
     if resos is not None:
-        resos = resos.copy(); resos["Date"] = resos["Time"].dt.date
+        resos = resos.copy(); resos["Date"] = pd.to_datetime(local_date(resos["Time"], tz_name))
         cum = cum.add(resos.groupby("Date")["Value"].sum() * 75, fill_value=0)
 
     ap_df = pd.DataFrame({"Date": date_range, "AP_M": cum.cumsum().values / 1_000_000})

@@ -11,8 +11,11 @@ data = st.session_state.data
 import numpy as np
 import pandas as pd
 import pydeck as pdk
+from time_utils import local_time_text, timezone_selector
 
 st.title("Portal Activity Map")
+tz_name = timezone_selector()
+st.caption(f"Displayed timestamps use timezone: **{tz_name}**")
 
 MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
 SOURCE_COLORS = {
@@ -188,11 +191,11 @@ def _polygonize_cells(cells: pd.DataFrame) -> pd.DataFrame:
     return cells
 
 
-def _sample_points(points: pd.DataFrame, max_points: int) -> pd.DataFrame:
+def _sample_points(points: pd.DataFrame, max_points: int, tz_name: str) -> pd.DataFrame:
     if len(points) > max_points:
         points = points.sample(max_points, random_state=42)
     sample = points[["Time", "Lat", "Lon", "Source", "Action", "Detail", "Type"]].copy()
-    sample["TimeText"] = sample["Time"].dt.strftime("%Y-%m-%d %H:%M")
+    sample["TimeText"] = local_time_text(sample["Time"], tz_name)
     sample["color"] = sample["Source"].map(SOURCE_COLORS).apply(lambda v: v if isinstance(v, list) else [76, 175, 80, 120])
     sample["TooltipTitle"] = sample["Source"]
     sample["TooltipDetail"] = sample["TimeText"]
@@ -220,9 +223,9 @@ def _get_cells(points: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, cel
     return _cache_get_or_set(key, lambda: _aggregate_cells(points, cell_m, max_cells))
 
 
-def _get_sampled_points(points: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, max_points: int) -> pd.DataFrame:
-    key = _cache_key("dots", start.isoformat(), end.isoformat(), max_points)
-    return _cache_get_or_set(key, lambda: _sample_points(points, max_points))
+def _get_sampled_points(points: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, max_points: int, tz_name: str) -> pd.DataFrame:
+    key = _cache_key("dots", start.isoformat(), end.isoformat(), max_points, tz_name)
+    return _cache_get_or_set(key, lambda: _sample_points(points, max_points, tz_name))
 
 
 def _get_portal_overlay(portal_history: pd.DataFrame | None, max_portals: int = 2500) -> pd.DataFrame:
@@ -369,7 +372,7 @@ def _display_frame(df: pd.DataFrame, columns: list[str], limit: int = 100) -> No
     st.dataframe(df[show_cols].head(limit), width="stretch", hide_index=True)
 
 
-def _show_cell_drilldown(points: pd.DataFrame, portals: pd.DataFrame, obj: dict) -> None:
+def _show_cell_drilldown(points: pd.DataFrame, portals: pd.DataFrame, obj: dict, tz_name: str) -> None:
     cell_points = _cell_activity(points, obj)
     cell_portals = _cell_portals(portals, obj)
 
@@ -377,8 +380,8 @@ def _show_cell_drilldown(points: pd.DataFrame, portals: pd.DataFrame, obj: dict)
     c1.metric("Activity in cell", f"{len(cell_points):,}")
     c2.metric("Portals in cell", f"{len(cell_portals):,}" if len(cell_portals) else "0")
     if len(cell_points):
-        c3.metric("First activity", cell_points["Time"].min().strftime("%Y-%m-%d"))
-        c4.metric("Last activity", cell_points["Time"].max().strftime("%Y-%m-%d"))
+        c3.metric("First activity", local_time_text(pd.Series([cell_points["Time"].min()]), tz_name, "%Y-%m-%d").iloc[0])
+        c4.metric("Last activity", local_time_text(pd.Series([cell_points["Time"].max()]), tz_name, "%Y-%m-%d").iloc[0])
     else:
         c3.metric("First activity", "-")
         c4.metric("Last activity", "-")
@@ -403,7 +406,7 @@ def _show_cell_drilldown(points: pd.DataFrame, portals: pd.DataFrame, obj: dict)
 
         st.caption("Recent activity in this cell")
         recent = cell_points.sort_values("Time", ascending=False).copy()
-        recent["TimeText"] = recent["Time"].dt.strftime("%Y-%m-%d %H:%M")
+        recent["TimeText"] = local_time_text(recent["Time"], tz_name)
         _display_frame(recent, ["TimeText", "Source", "Action", "Type", "Detail", "Lat", "Lon"], limit=100)
 
     if len(cell_portals):
@@ -464,7 +467,7 @@ def _show_selected_details(
         st.write(obj)
 
     if layer_id in {"density-cells", "grid-cells"}:
-        _show_cell_drilldown(points, portals, obj)
+        _show_cell_drilldown(points, portals, obj, tz_name)
     elif layer_id == "activity-dots":
         _show_point_context(portals, obj)
 
@@ -530,7 +533,7 @@ layers = []
 tooltip = {"text": "{TooltipTitle}\n{TooltipDetail}"}
 
 if mode == "Dot Scatter":
-    render_points = _get_sampled_points(filtered, start, end, max_dots)
+    render_points = _get_sampled_points(filtered, start, end, max_dots, tz_name)
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",

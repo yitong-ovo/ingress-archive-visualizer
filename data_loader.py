@@ -257,10 +257,13 @@ def _collect_player_journey_archive_files(files: dict[str, bytes]) -> dict[str, 
 
 
 def _read_text_lines(source: FileSource) -> list[str]:
+    def split_physical_lines(text: str) -> list[str]:
+        return [line.removesuffix("\r") for line in text.split("\n")]
+
     if isinstance(source, bytes):
-        return source.decode("utf-8").splitlines()
+        return split_physical_lines(source.decode("utf-8"))
     with open(source, "r", encoding="utf-8") as f:
-        return f.read().splitlines()
+        return split_physical_lines(f.read())
 
 
 def _source_size(source: FileSource) -> int:
@@ -272,6 +275,18 @@ def _source_size(source: FileSource) -> int:
 def _read_csv(source: FileSource, *args, **kwargs) -> pd.DataFrame:
     csv_source = io.BytesIO(source) if isinstance(source, bytes) else source
     return pd.read_csv(csv_source, *args, **kwargs)
+
+
+def decode_export_text_field(value: str) -> str:
+    """Decode fields stored as UTF-8 text after an earlier Latin-1 misdecode."""
+    if not isinstance(value, str) or not value:
+        return value
+    if not any(marker in value for marker in ("Ã", "Â", "å", "æ", "ç", "è", "é", "ä", "ï", "ð")):
+        return value
+    try:
+        return value.encode("latin1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
 
 
 # ── file parsers ──────────────────────────────────────────────
@@ -356,8 +371,7 @@ def _parse_simple_tsv(
 def _parse_game_log(path: FileSource) -> pd.DataFrame | None:
     rows = []
     for line in _read_text_lines(path)[1:]:
-        line = line.strip()
-        if not line:
+        if not line.strip():
             continue
         parts = line.split("\t")
         if len(parts) >= 5:
@@ -365,7 +379,7 @@ def _parse_game_log(path: FileSource) -> pd.DataFrame | None:
             lat = parts[1]
             lon = parts[2]
             action = parts[3]
-            detail = "\t".join(parts[4:])[:500]
+            detail = "\t".join(parts[4:])
             rows.append([ts, lat, lon, action, detail])
     if not rows:
         return None
@@ -373,6 +387,7 @@ def _parse_game_log(path: FileSource) -> pd.DataFrame | None:
     df["Time"] = pd.to_datetime(df["Time"], errors="coerce", utc=True, format="mixed")
     df["Lat"] = pd.to_numeric(df["Lat"], errors="coerce")
     df["Lon"] = pd.to_numeric(df["Lon"], errors="coerce")
+    df["Detail"] = df["Detail"].map(decode_export_text_field)
     return df
 
 

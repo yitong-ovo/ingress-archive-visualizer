@@ -10,8 +10,10 @@ data = st.session_state.data
 
 import plotly.graph_objects as go
 import pandas as pd
+from time_utils import local_month_start, timezone_selector
 
 st.title("Events & Anomalies")
+tz_name = timezone_selector()
 
 # ── season points ──
 season_files = {
@@ -93,7 +95,7 @@ if darkxm is not None and len(darkxm) > 0:
 # ── Second Sunday timeline ──
 if ss is not None and len(ss) > 0:
     st.subheader("Second Sunday Participation")
-    ss_dates = pd.to_datetime(ss["Time"], errors="coerce").dt.strftime("%Y-%m")
+    ss_dates = local_month_start(ss["Time"], tz_name).dt.strftime("%Y-%m")
     ss_c = ss_dates.value_counts().sort_index()
     fig_ss = go.Figure(data=go.Bar(x=ss_c.index, y=ss_c.values, marker_color="#2196F3"))
     fig_ss.update_layout(height=200, margin=dict(l=10, r=10, t=5, b=60), xaxis=dict(tickangle=-45))
